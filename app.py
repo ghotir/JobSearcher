@@ -61,4 +61,5 @@ if selected_option:
 
     # Full Description Section
     st.markdown("### 📄 Full Job Description")
-    st.text_area(label="", value=job['description'], height=500)
+    with st.container(border=True):
+        st.markdown(job['description'])

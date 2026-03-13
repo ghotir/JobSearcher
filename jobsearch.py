@@ -102,7 +102,7 @@ Rules:
   (e.g. "Staff Software Engineer" AND "Staff AI Engineer") to maximize coverage.
 - Each title should be a real, commonly-posted job title that will surface relevant results.
 
-Resume: {resume_text[:3000]}
+Resume: {resume_text}
 """
     search_terms_response = gemini_generate(client, search_prompt, response_mime_type='application/json')
     search_terms = json.loads(search_terms_response.text)
@@ -112,6 +112,9 @@ print("Generating scoring rubric from resume...")
 rubric_prompt = f"""
 You are a career expert. Based on the resume below, extract the candidate's profile for job matching.
 
+When listing skills, normalize aliases to their canonical industry name so they match job postings
+(e.g. ".NET/Mono" → ".NET", "JS" → "JavaScript", "k8s" → "Kubernetes").
+
 Return JSON with exactly these fields:
 {{
   "role_type": "the function this candidate works in, e.g. 'software engineering', 'product management', 'data science', 'engineering management', 'design'",
@@ -120,7 +123,7 @@ Return JSON with exactly these fields:
   "secondary_skills": "comma-separated list of secondary skills like DevOps, management, cloud, etc."
 }}
 
-Resume: {resume_text[:3000]}
+Resume: {resume_text}
 """
 rubric_response = gemini_generate(client, rubric_prompt, response_mime_type='application/json')
 rubric = json.loads(rubric_response.text)
@@ -188,6 +191,9 @@ if not new_jobs.empty:
           (e.g. requires a PhD and the resume shows no PhD, requires an active
           security clearance, requires 10+ years in a specific stack the resume
           does not show), cap the score at 30.
+        - When checking requirements, treat technology aliases as equivalent
+          (e.g. ".NET/Mono" satisfies a ".NET" requirement, "JS" = "JavaScript").
+          Do not knock out a candidate for a notation difference.
 
         STEP 2 — RUBRIC SCORING (only if no knockout applies):
         Score 0-100 using these weights:
@@ -206,8 +212,8 @@ if not new_jobs.empty:
         - Score 50-69 for possible fits with notable gaps.
         - Score below 50 for poor fits (but only after knockout checks pass).
 
-        Resume: {resume_text[:2000]}
-        JD: {raw_description[:3000]}
+        Resume: {resume_text}
+        JD: {raw_description[:8000]}
 
         Return JSON:
         {{
