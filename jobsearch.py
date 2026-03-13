@@ -8,7 +8,7 @@ from google import genai
 from jobspy import scrape_jobs
 
 # --- CONFIGURATION ---
-API_KEY = os.environ.get("geminiapikey")
+API_KEY = os.environ.get("GeminiApiKey")
 RESUME_PATH = sys.argv[1] if len(sys.argv) > 1 else "RyanFisher-Resume.pdf"
 HISTORY_FILE = "processed_jobs.json"
 REPORT_FILE = "my_job_report.csv"
@@ -34,6 +34,25 @@ def save_history(history_set):
     with open(HISTORY_FILE, 'w') as f:
         json.dump(list(history_set), f)
 
+def gemini_generate(client, prompt, response_mime_type=None, max_retries=3, retry_delay=5):
+    config = {'response_mime_type': response_mime_type} if response_mime_type else {}
+    for attempt in range(max_retries):
+        try:
+            response = client.models.generate_content(
+                model="gemini-2.5-flash-lite",
+                contents=prompt,
+                config=config
+            )
+            return response
+        except Exception as e:
+            if "503" in str(e) or "overloaded" in str(e).lower():
+                wait_time = retry_delay * (2 ** attempt)
+                print(f"Server overloaded. Retrying in {wait_time}s (Attempt {attempt+1}/{max_retries})...")
+                time.sleep(wait_time)
+            else:
+                raise
+    raise RuntimeError(f"Gemini API unavailable after {max_retries} retries.")
+
 # --- MAIN EXECUTION ---
 client = genai.Client(api_key=API_KEY)
 resume_text = extract_resume_text(RESUME_PATH)
@@ -55,10 +74,7 @@ Rules:
 
 Resume: {resume_text[:3000]}
 """
-search_term_response = client.models.generate_content(
-    model="gemini-2.5-flash-lite",
-    contents=search_prompt
-)
+search_term_response = gemini_generate(client, search_prompt)
 search_term = search_term_response.text.strip()
 print(f"Using search term: '{search_term}'")
 
@@ -75,11 +91,7 @@ Return JSON with exactly these fields:
 
 Resume: {resume_text[:3000]}
 """
-rubric_response = client.models.generate_content(
-    model="gemini-2.5-flash-lite",
-    contents=rubric_prompt,
-    config={'response_mime_type': 'application/json'}
-)
+rubric_response = gemini_generate(client, rubric_prompt, response_mime_type='application/json')
 rubric = json.loads(rubric_response.text)
 core_stack = rubric.get('core_stack', 'relevant technical skills')
 seniority = rubric.get('seniority', 'Senior Engineer')
@@ -99,9 +111,7 @@ jobs = scrape_jobs(
 new_jobs = jobs[~jobs['job_url'].isin(history)].copy()
 
 if not new_jobs.empty:
-    results_data = [] # To store our structured scores
-    max_retries = 3
-    retry_delay = 5  # Start with 5 seconds
+    results_data = []
     for index, row in new_jobs.iterrows():
         raw_description = str(row.get('description', ""))
     
@@ -136,38 +146,20 @@ if not new_jobs.empty:
         }}
         """
         
-        success = False
-        for attempt in range(max_retries):
-            try:
-                response = client.models.generate_content(
-                    model="gemini-2.5-flash-lite", 
-                    contents=prompt,
-                    config={'response_mime_type': 'application/json'}
-                )
-                # If successful, parse and break retry loop
-                res_json = json.loads(response.text)
-                results_data.append({
-                    'match_score': res_json.get('score', 0),
-                    'match_reason': res_json.get('reason', 'N/A'),
-                    'missing': ", ".join(res_json.get('missing', []))
-                })
-                success = True
-                break 
-                
-            except Exception as e:
-                if "503" in str(e) or "overloaded" in str(e).lower():
-                    wait_time = retry_delay * (2 ** attempt) # 5s, 10s, 20s...
-                    print(f"Server overloaded. Retrying in {wait_time}s (Attempt {attempt+1}/{max_retries})...")
-                    time.sleep(wait_time)
-                else:
-                    print(f"Permanent Error: {e}")
-                    results_data.append({'match_score': 0, 'match_reason': 'API Error', 'missing': ''})
-                    success = True # Move on to next job
-                    break
-
-        if not success:
-            print(f"Skipping {row['title']} after {max_retries} failed retries.")
+        try:
+            response = gemini_generate(client, prompt, response_mime_type='application/json')
+            res_json = json.loads(response.text)
+            results_data.append({
+                'match_score': res_json.get('score', 0),
+                'match_reason': res_json.get('reason', 'N/A'),
+                'missing': ", ".join(res_json.get('missing', []))
+            })
+        except RuntimeError:
+            print(f"Skipping {row['title']} after retries exhausted.")
             results_data.append({'match_score': 0, 'match_reason': 'Server Timeout', 'missing': ''})
+        except Exception as e:
+            print(f"Permanent Error: {e}")
+            results_data.append({'match_score': 0, 'match_reason': 'API Error', 'missing': ''})
 
         time.sleep(1)
 
