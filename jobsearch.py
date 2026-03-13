@@ -114,6 +114,7 @@ You are a career expert. Based on the resume below, extract the candidate's prof
 
 Return JSON with exactly these fields:
 {{
+  "role_type": "the function this candidate works in, e.g. 'software engineering', 'product management', 'data science', 'engineering management', 'design'",
   "core_stack": "comma-separated list of their primary technical skills/languages/frameworks",
   "seniority": "their level, e.g. Principal Engineer, Staff Engineer, Senior Engineer",
   "secondary_skills": "comma-separated list of secondary skills like DevOps, management, cloud, etc."
@@ -123,10 +124,11 @@ Resume: {resume_text[:3000]}
 """
 rubric_response = gemini_generate(client, rubric_prompt, response_mime_type='application/json')
 rubric = json.loads(rubric_response.text)
+role_type = rubric.get('role_type', 'the candidate\'s field')
 core_stack = rubric.get('core_stack', 'relevant technical skills')
 seniority = rubric.get('seniority', 'Senior Engineer')
 secondary_skills = rubric.get('secondary_skills', 'DevOps, Management')
-print(f"Rubric — Core: {core_stack} | Seniority: {seniority} | Secondary: {secondary_skills}")
+print(f"Rubric — Role: {role_type} | Core: {core_stack} | Seniority: {seniority} | Secondary: {secondary_skills}")
 
 print("Searching Indeed, ZipRecruiter, Glassdoor & Google Jobs...")
 all_frames = []
@@ -180,10 +182,8 @@ if not new_jobs.empty:
         - Secondary Skills: {secondary_skills}
 
         STEP 1 — KNOCKOUT CHECKS (apply these first; if any trigger, use the capped score):
-        - If the JD is not an individual-contributor software engineering role
-          (e.g. it is a recruiter, sales, program manager, data analyst, or purely
-          management role), cap the score at 15. Sharing technical vocabulary does
-          not make a non-engineering role a match.
+        - If the JD is not a role in {role_type}, cap the score at 15. Sharing
+          industry vocabulary does not make an unrelated role a match.
         - If the JD lists a hard requirement the candidate clearly cannot meet
           (e.g. requires a PhD and the resume shows no PhD, requires an active
           security clearance, requires 10+ years in a specific stack the resume
