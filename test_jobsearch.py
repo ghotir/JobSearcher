@@ -41,7 +41,13 @@ _mock_doc.__iter__ = lambda self: iter([_mock_page])
 _fitz_mock.open.return_value = _mock_doc
 
 # scrape_jobs returns an empty frame so the scoring loop is skipped.
-_jobspy_mock.scrape_jobs.return_value = pd.DataFrame({'job_url': pd.Series([], dtype=str)})
+# Include all columns the pipeline references to avoid KeyErrors at import.
+_jobspy_mock.scrape_jobs.return_value = pd.DataFrame({
+    'job_url': pd.Series([], dtype=str),
+    'job_url_direct': pd.Series([], dtype=str),
+    'title': pd.Series([], dtype=str),
+    'company': pd.Series([], dtype=str),
+})
 
 # Gemini client returns valid responses for the two module-level calls
 # (search term generation and rubric extraction).
@@ -59,6 +65,8 @@ _rubric_resp.text = json.dumps({
 
 _mock_client.models.generate_content.side_effect = [_rubric_resp]
 
+# --title is passed so the multi-term Gemini call is skipped during import.
+# Only the rubric extraction call fires.
 with patch.dict('os.environ', {'GeminiApiKey': 'fake-key'}), \
      patch('sys.argv', ['jobsearch.py', '--resume', 'dummy.pdf', '--title', 'Software Engineer']):
     import jobsearch

@@ -90,31 +90,33 @@ source ~/.bashrc
 Run the scraper with named arguments:
 
 ```bash
-python jobsearch.py --resume path/to/your-resume.pdf [--hours 24] [--title "Staff Software Engineer"]
+python jobsearch.py --resume path/to/your-resume.pdf [--hours 24] [--results 50] [--title "Staff Software Engineer"]
 ```
 
 | Argument | Required | Default | Description |
 |---|---|---|---|
 | `--resume` | No | `RyanFisher-Resume.pdf` | Path to your resume PDF |
 | `--hours` | No | `4` | How many hours back to search for new postings |
-| `--title` | No | *(derived from resume)* | Job title to search for. Skips the Gemini search-term call when provided. |
+| `--results` | No | `50` | Number of listings to fetch per search term |
+| `--title` | No | *(Gemini generates 4-5 variations)* | Pin the search to a single job title. Useful when targeting a specific role; omit it to maximize coverage. |
 
 Run `python jobsearch.py --help` to see this reference at any time.
 
 Examples:
 ```bash
-# Minimal — Gemini picks the search title from your resume
+# Minimal — Gemini generates multiple search terms from your resume
 python jobsearch.py --resume resume.pdf
 
-# Search the last 24 hours
-python jobsearch.py --resume resume.pdf --hours 24
+# Wider net — last 24 hours, 100 results per search term
+python jobsearch.py --resume resume.pdf --hours 24 --results 100
 
-# Override the search title manually
+# Override the search title manually (single term, fewer results)
 python jobsearch.py --resume resume.pdf --hours 24 --title "Principal Software Engineer"
 ```
 
 The tool will:
-- Read your resume and pick a search term automatically (or use `--title` if provided).
+- Read your resume and have Gemini generate 4-5 job title variations to search (or use `--title` for a single term).
+- Run a separate search for each title and combine the results, deduplicating jobs that appear across multiple searches or job boards.
 - Extract your tech stack, seniority, and secondary skills to build a personalized scoring rubric — it will print what it derived so you can verify it looks right.
 - Scrape the specified time window of remote job postings.
 - Score each new job using your personalized rubric and append results to `my_job_report.csv`.

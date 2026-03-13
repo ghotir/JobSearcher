@@ -18,6 +18,7 @@ parser = argparse.ArgumentParser(
 examples:
   python jobsearch.py --resume resume.pdf
   python jobsearch.py --resume resume.pdf --hours 24
+  python jobsearch.py --resume resume.pdf --hours 24 --results 50
   python jobsearch.py --resume resume.pdf --hours 24 --title "Staff Software Engineer"
     """
 )
@@ -25,12 +26,15 @@ parser.add_argument("--resume", default="RyanFisher-Resume.pdf",
                     help="Path to your resume PDF (default: RyanFisher-Resume.pdf)")
 parser.add_argument("--hours", type=int, default=4,
                     help="How many hours back to search for postings (default: 4)")
+parser.add_argument("--results", type=int, default=50,
+                    help="Number of results to fetch per search term (default: 50)")
 parser.add_argument("--title", default=None,
-                    help="Job title to search for. If omitted, Gemini derives one from your resume.")
+                    help="Job title to search for. If omitted, Gemini generates multiple variations from your resume.")
 args = parser.parse_args()
 
 RESUME_PATH = args.resume
 HOURS_OLD = args.hours
+RESULTS_WANTED = args.results
 HISTORY_FILE = "processed_jobs.json"
 REPORT_FILE = "my_job_report.csv"
 
@@ -84,23 +88,25 @@ if not resume_text:
     exit()
 
 if args.title:
-    search_term = args.title
-    print(f"Using search term from argument: '{search_term}'")
+    search_terms = [args.title]
+    print(f"Using search term from argument: '{args.title}'")
 else:
-    print("Generating search term from resume...")
+    print("Generating search terms from resume...")
     search_prompt = f"""
-You are a job search expert. Based on the resume below, produce the single best job title search term
-to find roles this candidate is qualified for and would be a strong match for.
+You are a job search expert. Based on the resume below, produce 4-5 distinct job title search terms
+that together cast the widest net for roles this candidate is genuinely qualified for.
 
 Rules:
-- Return ONLY the job title string, nothing else — no punctuation, no explanation.
-- Choose a broadly-used title (e.g. "Principal Software Engineer") that will surface the most relevant postings.
+- Return a JSON array of strings — titles only, no explanation.
+- Vary seniority phrasing (e.g. "Staff Engineer" AND "Principal Engineer") and domain focus
+  (e.g. "Staff Software Engineer" AND "Staff AI Engineer") to maximize coverage.
+- Each title should be a real, commonly-posted job title that will surface relevant results.
 
 Resume: {resume_text[:3000]}
 """
-    search_term_response = gemini_generate(client, search_prompt)
-    search_term = search_term_response.text.strip()
-    print(f"Using search term: '{search_term}'")
+    search_terms_response = gemini_generate(client, search_prompt, response_mime_type='application/json')
+    search_terms = json.loads(search_terms_response.text)
+    print(f"Using search terms: {search_terms}")
 
 print("Generating scoring rubric from resume...")
 rubric_prompt = f"""
@@ -123,30 +129,47 @@ secondary_skills = rubric.get('secondary_skills', 'DevOps, Management')
 print(f"Rubric — Core: {core_stack} | Seniority: {seniority} | Secondary: {secondary_skills}")
 
 print("Searching Indeed, ZipRecruiter, Glassdoor & Google Jobs...")
-jobs = scrape_jobs(
-    site_name=["indeed", "zip_recruiter", "glassdoor", "google"],
-    search_term=search_term,
-    location="Remote",
-    hours_old=HOURS_OLD,
-    results_wanted=50
-)
+all_frames = []
+for term in search_terms:
+    print(f"  Searching '{term}'...")
+    results = scrape_jobs(
+        site_name=["indeed", "zip_recruiter", "glassdoor", "google"],
+        search_term=term,
+        location="Remote",
+        hours_old=HOURS_OLD,
+        results_wanted=RESULTS_WANTED
+    )
+    all_frames.append(results)
+
+jobs = pd.concat(all_frames, ignore_index=True)
+
+# Deduplicate cross-site and cross-term listings by company + title, keeping
+# the copy with a direct URL when available (better apply link).
+jobs['_has_direct'] = jobs['job_url_direct'].notna()
+jobs = (jobs
+        .sort_values('_has_direct', ascending=False)
+        .drop_duplicates(subset=['company', 'title'], keep='first')
+        .drop(columns='_has_direct'))
+print(f"Scraped {len(jobs)} unique listings after removing duplicates.")
 
 # Filter out jobs we've already scored
 new_jobs = jobs[~jobs['job_url'].isin(history)].copy()
+already_seen = len(jobs) - len(new_jobs)
+print(f"{already_seen} already scored, {len(new_jobs)} new to score.")
 
 if not new_jobs.empty:
     results_data = []
     for index, row in new_jobs.iterrows():
         raw_description = str(row.get('description', ""))
-    
+
         # If the description is too short to be a real JD, skip it
         if len(raw_description) < 10:
             print(f"Skipping {row['title']} - No description found.")
             results_data.append({'match_score': 0, 'match_reason': 'Missing description'})
-            continue  
-        
+            continue
+
         print(f"Scoring: {row['title']}...")
-        
+
         prompt = f"""
         You are a strict career matching expert. Your job is to protect the candidate's
         time by filtering out roles that are not a genuine fit.
@@ -193,7 +216,7 @@ if not new_jobs.empty:
           "missing": ["List 2-3 most critical missing items or the knockout reason"]
         }}
         """
-        
+
         try:
             response = gemini_generate(client, prompt, response_mime_type='application/json')
             res_json = json.loads(response.text)
@@ -223,19 +246,18 @@ if not new_jobs.empty:
     # Save results
     history.update(new_jobs['job_url'].tolist())
     save_history(history)
-    
+
     final_columns = [
-        'job_url', 
-        'job_url_direct', 
-        'title', 
-        'company', 
-        'match_score', 
-        'match_reason', 
+        'job_url',
+        'job_url_direct',
+        'title',
+        'company',
+        'match_score',
+        'match_reason',
         'missing',
         'description'
     ]
 
-    # 3. Filter and Save
     # Check if columns exist (JobSpy sometimes varies output)
     available_cols = [c for c in final_columns if c in new_jobs.columns]
     output_df = new_jobs[available_cols].sort_values(by='match_score', ascending=False)
@@ -244,7 +266,7 @@ if not new_jobs.empty:
     mode = 'a' if os.path.exists(REPORT_FILE) else 'w'
     header = not os.path.exists(REPORT_FILE)
     output_df.to_csv(REPORT_FILE, mode=mode, header=header, index=False)
-        
+
     print(f"Done! {len(new_jobs)} jobs added to {REPORT_FILE}")
 else:
     print("No new jobs found.")
