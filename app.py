@@ -39,7 +39,13 @@ if selected_option:
     
     col1, col2 = st.columns(2)
     with col1:
-        st.link_button("🚀 Apply on Direct Site", job['job_url_direct'] if pd.notnull(job['job_url_direct']) else job['job_url'])
+        apply_url = job['job_url_direct'] if pd.notnull(job['job_url_direct']) else job['job_url']
+        st.markdown(
+            f'<a href="{apply_url}" target="_blank" style="display:inline-block;padding:0.4em 1em;'
+            f'background-color:#FF4B4B;color:white;border-radius:6px;text-decoration:none;font-weight:600;">'
+            f'&#x2197; Apply (opens new tab)</a>',
+            unsafe_allow_html=True
+        )
     with col2:
         st.metric(label="Match Score", value=f"{int(job.match_score)}/100")
 

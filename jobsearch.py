@@ -10,6 +10,7 @@ from jobspy import scrape_jobs
 # --- CONFIGURATION ---
 API_KEY = os.environ.get("GeminiApiKey")
 RESUME_PATH = sys.argv[1] if len(sys.argv) > 1 else "RyanFisher-Resume.pdf"
+HOURS_OLD = int(sys.argv[2]) if len(sys.argv) > 2 else 4
 HISTORY_FILE = "processed_jobs.json"
 REPORT_FILE = "my_job_report.csv"
 
@@ -103,7 +104,7 @@ jobs = scrape_jobs(
     site_name=["indeed", "zip_recruiter", "glassdoor", "google"],
     search_term=search_term,
     location="Remote",
-    hours_old=4,
+    hours_old=HOURS_OLD,
     results_wanted=50
 )
 
@@ -124,16 +125,40 @@ if not new_jobs.empty:
         print(f"Scoring: {row['title']}...")
         
         prompt = f"""
-        You are a career matching expert. Compare the Resume to the Job Description (JD).
-        Assign a score from 0-100 based on this weighted rubric:
-        - 50%: Core Technical Stack ({core_stack}).
-        - 30%: Seniority/Experience Level ({seniority}).
-        - 20%: Secondary Skills ({secondary_skills}).
+        You are a strict career matching expert. Your job is to protect the candidate's
+        time by filtering out roles that are not a genuine fit.
+
+        Candidate profile:
+        - Core Technical Stack: {core_stack}
+        - Seniority: {seniority}
+        - Secondary Skills: {secondary_skills}
+
+        STEP 1 — KNOCKOUT CHECKS (apply these first; if any trigger, use the capped score):
+        - If the JD is not an individual-contributor software engineering role
+          (e.g. it is a recruiter, sales, program manager, data analyst, or purely
+          management role), cap the score at 15. Sharing technical vocabulary does
+          not make a non-engineering role a match.
+        - If the JD lists a hard requirement the candidate clearly cannot meet
+          (e.g. requires a PhD and the resume shows no PhD, requires an active
+          security clearance, requires 10+ years in a specific stack the resume
+          does not show), cap the score at 30.
+
+        STEP 2 — RUBRIC SCORING (only if no knockout applies):
+        Score 0-100 using these weights:
+        - 50%: Core technical stack alignment ({core_stack})
+        - 30%: Seniority match ({seniority})
+        - 20%: Secondary skills ({secondary_skills})
 
         SCORING RULES:
-        - If they have the Core Tech but lack the Secondary Skills, they can still score up to an 80.
-        - Only score below 50 if the Core Technical Stack is a complete mismatch.
-        - Be realistic: A 90+ is a "Must Interview," 70-80 is a "Strong Contender."
+        - Missing secondary skills alone should not drop a score below 70 if
+          the core stack and seniority are strong matches.
+        - A skills overlap due to shared industry vocabulary (e.g. a recruiter
+          role mentioning "engineers" or "sprints") is NOT a technical stack match.
+        - Score 90+ only if this is a role the candidate would very likely get
+          through screening with no red flags.
+        - Score 70-89 for strong contenders with minor gaps.
+        - Score 50-69 for possible fits with notable gaps.
+        - Score below 50 for poor fits (but only after knockout checks pass).
 
         Resume: {resume_text[:2000]}
         JD: {raw_description[:3000]}
@@ -141,8 +166,8 @@ if not new_jobs.empty:
         Return JSON:
         {{
           "score": integer,
-          "reason": "Short summary of why this score was given",
-          "missing": ["List 2-3 most critical missing items"]
+          "reason": "Short summary of why this score was given, naming any knockout that was applied",
+          "missing": ["List 2-3 most critical missing items or the knockout reason"]
         }}
         """
         
