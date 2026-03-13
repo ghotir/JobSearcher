@@ -48,9 +48,8 @@ _jobspy_mock.scrape_jobs.return_value = pd.DataFrame({'job_url': pd.Series([], d
 _mock_client = MagicMock()
 _genai_mock.Client.return_value = _mock_client
 
-_search_resp = MagicMock()
-_search_resp.text = "Principal Software Engineer"
-
+# --title is passed in sys.argv so the search-term Gemini call is skipped.
+# Only the rubric extraction call fires during import.
 _rubric_resp = MagicMock()
 _rubric_resp.text = json.dumps({
     "core_stack": "Python, Django",
@@ -58,10 +57,10 @@ _rubric_resp.text = json.dumps({
     "secondary_skills": "DevOps, AWS",
 })
 
-_mock_client.models.generate_content.side_effect = [_search_resp, _rubric_resp]
+_mock_client.models.generate_content.side_effect = [_rubric_resp]
 
 with patch.dict('os.environ', {'GeminiApiKey': 'fake-key'}), \
-     patch('sys.argv', ['jobsearch.py', 'dummy.pdf']):
+     patch('sys.argv', ['jobsearch.py', '--resume', 'dummy.pdf', '--title', 'Software Engineer']):
     import jobsearch
 
 

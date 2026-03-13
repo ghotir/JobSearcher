@@ -2,6 +2,7 @@ import os
 import sys
 import json
 import time
+import argparse
 import fitz  # PyMuPDF
 import pandas as pd
 from google import genai
@@ -9,8 +10,27 @@ from jobspy import scrape_jobs
 
 # --- CONFIGURATION ---
 API_KEY = os.environ.get("GeminiApiKey")
-RESUME_PATH = sys.argv[1] if len(sys.argv) > 1 else "RyanFisher-Resume.pdf"
-HOURS_OLD = int(sys.argv[2]) if len(sys.argv) > 2 else 4
+
+parser = argparse.ArgumentParser(
+    description="Scrape job boards and score listings against your resume using Gemini AI.",
+    formatter_class=argparse.RawDescriptionHelpFormatter,
+    epilog="""
+examples:
+  python jobsearch.py --resume resume.pdf
+  python jobsearch.py --resume resume.pdf --hours 24
+  python jobsearch.py --resume resume.pdf --hours 24 --title "Staff Software Engineer"
+    """
+)
+parser.add_argument("--resume", default="RyanFisher-Resume.pdf",
+                    help="Path to your resume PDF (default: RyanFisher-Resume.pdf)")
+parser.add_argument("--hours", type=int, default=4,
+                    help="How many hours back to search for postings (default: 4)")
+parser.add_argument("--title", default=None,
+                    help="Job title to search for. If omitted, Gemini derives one from your resume.")
+args = parser.parse_args()
+
+RESUME_PATH = args.resume
+HOURS_OLD = args.hours
 HISTORY_FILE = "processed_jobs.json"
 REPORT_FILE = "my_job_report.csv"
 
@@ -63,21 +83,24 @@ if not resume_text:
     print("Could not load resume. Exiting.")
     exit()
 
-print("Generating search term from resume...")
-search_prompt = f"""
+if args.title:
+    search_term = args.title
+    print(f"Using search term from argument: '{search_term}'")
+else:
+    print("Generating search term from resume...")
+    search_prompt = f"""
 You are a job search expert. Based on the resume below, produce the single best job title search term
 to find roles this candidate is qualified for and would be a strong match for.
 
 Rules:
 - Return ONLY the job title string, nothing else — no punctuation, no explanation.
 - Choose a broadly-used title (e.g. "Principal Software Engineer") that will surface the most relevant postings.
-- Reflect the candidate's actual seniority and primary technical domain.
 
 Resume: {resume_text[:3000]}
 """
-search_term_response = gemini_generate(client, search_prompt)
-search_term = search_term_response.text.strip()
-print(f"Using search term: '{search_term}'")
+    search_term_response = gemini_generate(client, search_prompt)
+    search_term = search_term_response.text.strip()
+    print(f"Using search term: '{search_term}'")
 
 print("Generating scoring rubric from resume...")
 rubric_prompt = f"""
