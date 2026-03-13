@@ -87,16 +87,30 @@ source ~/.bashrc
 
 ### Scrape and Score Jobs
 
-Run the scraper, passing the path to your resume PDF:
+Run the scraper, passing the path to your resume PDF and optionally how many hours back to search:
 
 ```bash
-python jobsearch.py path/to/your-resume.pdf
+python jobsearch.py path/to/your-resume.pdf [hours]
+```
+
+| Argument | Required | Default | Description |
+|---|---|---|---|
+| `resume` | Yes | — | Path to your resume PDF |
+| `hours` | No | `4` | How many hours back to search for new postings |
+
+Examples:
+```bash
+# Search the last 4 hours (default)
+python jobsearch.py resume.pdf
+
+# Search the last 24 hours
+python jobsearch.py resume.pdf 24
 ```
 
 The tool will:
 - Read your resume and pick a search term automatically.
 - Extract your tech stack, seniority, and secondary skills to build a personalized scoring rubric — it will print what it derived so you can verify it looks right.
-- Scrape the last 4 hours of remote job postings.
+- Scrape the specified time window of remote job postings.
 - Score each new job using your personalized rubric and append results to `my_job_report.csv`.
 
 You can run this repeatedly — already-scored jobs are skipped automatically.
