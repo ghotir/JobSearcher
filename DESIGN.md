@@ -22,6 +22,17 @@ Job searching on LinkedIn is largely a volume game with poor signal-to-noise. Th
 - Candidates waste significant time reading job descriptions that contain a disqualifying requirement buried in paragraph four.
 - The apply-and-forget pattern makes it hard to track and compare options across multiple boards.
 
+### The Sponsored Listing Problem
+
+LinkedIn's job feed is ordered primarily by paid promotion, not relevance. Companies that pay more appear at the top — meaning every job seeker, regardless of background, sees largely the same set of sponsored listings first. This creates a structural crowding problem:
+
+- The most visible jobs are the most applied-to jobs. A sponsored listing from a well-known company routinely accumulates **1,000–5,000+ applications within 24–48 hours** of posting.
+- At that application volume, even a strong candidate has poor odds of a human ever reading their resume — most get filtered by ATS keyword matching or simply lost in the pile.
+- Because the same listings dominate everyone's feed, job seekers are effectively competing in the same overcrowded pool rather than finding openings that genuinely match their profile.
+- Smaller companies and newer postings that would be excellent fits are buried below the fold and never seen.
+
+JobSearcher bypasses this dynamic by scraping job boards directly and sorting by AI-assessed fit — not by how much the employer paid to be seen. A four-hour-old listing from a less well-known company that is a 92/100 match will appear at the top of the dashboard, while a sponsored listing that is a poor fit will score low and be ignored.
+
 **Goal:** Replace manual triage with an automated pipeline that scrapes multiple job boards, scores each listing against the candidate's actual resume, and surfaces only the strongest matches in a reviewable UI — so the candidate spends time applying, not searching.
 
 ---
