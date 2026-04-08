@@ -1,5 +1,7 @@
 # JobSearcher
 
+> **[System Design Document](DESIGN.md)** — problem statement, AI architecture, design decisions, compliance, rollout plan, and impact evaluation.
+
 An AI-powered job search tool that scrapes listings from major job boards and scores each one against your resume using Google Gemini. It then presents results in an interactive dashboard so you can quickly focus on your best matches.
 
 ## How It Works
